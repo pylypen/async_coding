@@ -1,0 +1,4 @@
+https://www.example.com
+https://www.anotherexample.com/page1
+https://www.yetanotherexample.com/page2
+https://api.example.com/data
