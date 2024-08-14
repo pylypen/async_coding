@@ -1,0 +1,16 @@
+Total words:  1440378
+Total count for word :  655
+main_one calculation took 40.47 seconds
+=====================================
+Total words:  1440378
+Total count for word :  655
+main_old_version MP calculation took 26.04 seconds
+=====================================
+Total words:  1440378
+Total count for word :  655
+calculateAverage MP calculation took 7.02 seconds
+=====================================
+Total words:  1440378
+Total count for word :  655
+Polars calculation took 4.06 seconds
+=====================================
