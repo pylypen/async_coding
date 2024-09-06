@@ -8,6 +8,10 @@ from dateutil import parser
 async def create_cve(db: AsyncSession, cve: CVECreate):
     db_cve = CVE(**cve.dict())
 
+    check_cve = await get_cve(db, db_cve.id)
+    if check_cve:
+        return check_cve
+
     db_cve.date_published = db_cve.date_published.replace(tzinfo=None)
     db_cve.date_updated = db_cve.date_updated.replace(tzinfo=None)
 

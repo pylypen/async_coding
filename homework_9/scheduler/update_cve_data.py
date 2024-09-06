@@ -4,16 +4,9 @@ import json
 from asyncio import run
 from dateutil import parser
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from fastapi import Depends, HTTPException
-from sqlalchemy.orm import sessionmaker
-from contextlib import asynccontextmanager
 import logging
 import asyncio
 from aiohttp import ClientError
-import requests
 from dotenv import load_dotenv
 import os
 
@@ -29,107 +22,81 @@ logging.getLogger('apscheduler').setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 #########################
 
-############DB conf#############
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, String, Text, DateTime, JSON
 
-Base = declarative_base()
-
-
-class CVE(Base):
-    __tablename__ = 'cves'
-
-    id = Column(String, primary_key=True)
-    date_published = Column(DateTime)
-    date_updated = Column(DateTime)
-    title = Column(String)
-    description = Column(Text)
-    problem_types = Column(JSON)
-#####################
-
-@asynccontextmanager
-async def get_db() -> AsyncSession:
-    engine = create_async_engine(DATABASE_URL, echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    async_session = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    session = async_session()
-
+async def fetch_delta_json():
     try:
-        yield session
-    finally:
-        await session.close()
-        await engine.dispose()
-
-##########################
-def fetch_delta_json():
-    DELTA_URL = "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/delta.json"
-    try:
-        response = requests.get(DELTA_URL)
-        return response.json()  # Parses the response as JSON
-    except requests.exceptions.RequestException as e:
+        DELTA_URL = "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/delta.json"
+        async with aiohttp.ClientSession() as http_session:
+            async with http_session.get(DELTA_URL) as response:
+                if response.status == 200:
+                    data = await response.read()
+                    return json.loads(data)
+                return {}
+    except Exception as e:
         scheduler._logger.error(f"Error fetching JSON: {e}")
         return {}
 
-async def process_new_cves(session: AsyncSession):
+async def process_new_cves():
     try:
-        delta_data = fetch_delta_json()
+        delta_data = await fetch_delta_json()
         if delta_data and 'new' in delta_data:
             for cve_data in delta_data['new']:
                 cve_link = cve_data.get("githubLink")
                 if not cve_link:
                     continue
 
-                await process_cve_link(session, cve_link)
+                await process_cve_link(cve_link)
         if delta_data and 'updated' in delta_data:
             for cve_data in delta_data['updated']:
                 cve_link = cve_data.get("githubLink")
                 if not cve_link:
                     continue
 
-                await process_cve_link(session, cve_link)
+                await process_cve_link(cve_link)
     except Exception as e:
         scheduler._logger.error(f"process_new_cves: {e}")
         return {}
 
-async def process_cve_link(session: AsyncSession, cve_link: str):
+async def process_cve_link(cve_link: str):
     try:
-        response = requests.get(cve_link)
+        async with aiohttp.ClientSession() as http_session:
+            async with http_session.get(cve_link) as response:
+                if response.status == 200:
+                    data = await response.text()
+                    json_data = json.loads(data)
+                    return await save_cve(json_data)
+    except Exception as e:
+        scheduler._logger.error(f"Error process_cve_link: {e}")
 
-        return await save_cve(session, response.json())
-    except requests.exceptions.RequestException as e:
-        return {}
-
-async def save_cve(session: AsyncSession, cve_data: dict):
+async def save_cve(cve_data: dict):
     if not isinstance(cve_data, dict) or not cve_data.get('cveMetadata'):
         return
 
     cve_id = cve_data['cveMetadata']['cveId']
-    query = select(CVE).filter(CVE.id == cve_id)
-    result = await session.execute(query)
-    cve = result.scalar_one_or_none()
+    if cve_id:
+        new_cve = {
+            "id": cve_id,
+            "date_published": get_date_published(cve_data),
+            "date_updated": get_date_updated(cve_data),
+            "title": cve_data['cveMetadata'].get('assignerShortName'),
+            "description": get_description(cve_data),
+            "problem_types": get_problem_types(cve_data)
+        }
+        async with aiohttp.ClientSession() as http_session:
+            async with http_session.post("http://127.0.0.1:8001/cves", json=new_cve) as response:
+                if response.status == 200:
+                    scheduler._logger.info('new cve_data added')
+                else:
+                    data = await response.text()
+                    scheduler._logger.info(json.loads(data))
 
-    if cve is None:
-        new_cve = CVE(
-            id=cve_id,
-            date_published=get_date_published(cve_data),
-            date_updated=get_date_updated(cve_data),
-            title=cve_data['cveMetadata'].get('assignerShortName'),
-            description=get_description(cve_data),
-            problem_types=get_problem_types(cve_data)
-        )
-        session.add(new_cve)
-    else:
-        scheduler._logger.info('cve_data exist')
-
-    await session.commit()
 
 def get_date_published(data):
     try:
         date_published = parser.parse(data['cveMetadata'].get('datePublished'))
     except Exception:
         return
-    return date_published.replace(tzinfo=None)
+    return date_published.replace(tzinfo=None).isoformat()
 
 
 def get_date_updated(data):
@@ -137,7 +104,7 @@ def get_date_updated(data):
         date_updated = parser.parse(data['cveMetadata'].get('dateUpdated'))
     except Exception:
         return
-    return date_updated.replace(tzinfo=None)
+    return date_updated.replace(tzinfo=None).isoformat()
 
 
 def get_description(data):
@@ -149,22 +116,24 @@ def get_description(data):
 
 def get_problem_types(data):
     try:
-        return json.dumps(data['containers']['cna'].get('problemTypes'))
+        return data['containers']['cna'].get('problemTypes')
     except Exception as e:
         return None
 
 
 async def scheduled_cve_update():
     try:
-        async with get_db() as session:
-            await process_new_cves(session)
+        await process_new_cves()
     except Exception as e:
         logger.error(f"Error occurred during fetch_cve_updates: {e}")
 
+async def main():
+    pass
 
 if __name__ == '__main__':
+
     try:
-        # run(scheduled_cve_update())
+        # run(main())
         scheduler = AsyncIOScheduler()
         scheduler.add_job(scheduled_cve_update, trigger='interval', minutes=1)
         scheduler.start()

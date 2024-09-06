@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from homework_9.routes import cve
 from homework_9.database import engine, init_db
-from homework_9.exceptions import custom_exception_handler, http_exception_handler, http_validation_handler
-from fastapi.exceptions import ResponseValidationError
+from homework_9.exceptions import custom_exception_handler, http_exception_handler, validation_request_exception_handler
+from fastapi.exceptions import RequestValidationError
 import uvicorn
 
 
@@ -33,7 +33,7 @@ app.include_router(cve.router, prefix="/cves", tags=["cves"])
 # Налаштування обробників помилок
 app.add_exception_handler(Exception, custom_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
-app.add_exception_handler(ResponseValidationError, http_validation_handler)
+app.add_exception_handler(RequestValidationError, validation_request_exception_handler)
 
 
 

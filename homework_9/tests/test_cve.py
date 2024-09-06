@@ -11,7 +11,8 @@ async def test_create_cve(client):
         "date_published": "2024-08-01T12:34:56",
         "date_updated": "2024-08-01T12:34:56",
         "title": "Test CVE",
-        "description": "This is a test CVE."
+        "description": "This is a test CVE.",
+        "problem_types": [{'descriptions': [{'type': 'text', 'lang': 'en', 'description': 'n/a'}]}]
     }
     response = await client.post("/cves/", json=cve_data)
     assert response.status_code == 200
@@ -48,3 +49,16 @@ async def test_list_cve_with_pagination(client):
     response = await client.get("/cves/?skip=0&limit=2")
     assert response.status_code == 200
     assert len(response.json()) <= 2
+
+@pytest.mark.asyncio
+async def test_create_cve_fail(client):
+    cve_data = {
+        "id": f"CVE-2024-{timestamp}",
+        "date_published": "2024-08-01T12:34:56",
+        "date_updated": "2024-08-01T12:34:56",
+        "title": [{'descriptions': [{'type': 'text', 'lang': 'en', 'description': 'n/a'}]}],
+        "description": "This is a test CVE.",
+        "problem_types": [{'descriptions': [{'type': 'text', 'lang': 'en', 'description': 'n/a'}]}]
+    }
+    response = await client.post("/cves/", json=cve_data)
+    assert response.status_code == 422

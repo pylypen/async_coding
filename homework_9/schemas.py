@@ -9,7 +9,7 @@ class CVEBase(BaseModel):
     date_updated: Optional[datetime] = None
     title: Optional[str] = None
     description: Optional[str] = None
-    problem_types: Optional[List[dict]] = None
+    problem_types: Optional[List] = None
 
 
 class CVECreate(CVEBase):
@@ -21,4 +21,4 @@ class CVEOut(CVEBase):
     date_updated: Optional[datetime]
     title: Optional[str] = None
     description: Optional[str] = None
-    problem_types: Optional[List[dict]] = None
+    problem_types: Optional[List] = None

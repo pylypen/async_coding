@@ -1,5 +1,5 @@
 from fastapi import Request, HTTPException
-from fastapi.exceptions import ResponseValidationError
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import logging
 
@@ -21,9 +21,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content={"detail": exc.detail},
     )
 
-async def http_validation_handler(request: Request, exc: ResponseValidationError):
+async def validation_request_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
         content={"detail": exc._errors},
     )
-

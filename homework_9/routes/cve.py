@@ -1,18 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from urllib3 import request
+
 from homework_9 import crud, schemas
 from homework_9.dependencies import get_db
 
 
 router = APIRouter()
 
-@router.post("/", response_model=schemas.CVEOut)
-async def create_cve(cve: schemas.CVECreate, db: AsyncSession = Depends(get_db)):
-    return await crud.create_cve(db=db, cve=cve)
-
 @router.get("/")
 async def list_cve(skip: int = 0, limit: int = 10, session: AsyncSession = Depends(get_db)):
     return await crud.get_cves(session, skip, limit)
+
+@router.post("/", response_model=schemas.CVEOut)
+async def create_cve(cve: schemas.CVECreate, db: AsyncSession = Depends(get_db)):
+    return await crud.create_cve(db=db, cve=cve)
 
 @router.get("/{cve_id}", response_model=schemas.CVEOut)
 async def read_cve(cve_id: str, db: AsyncSession = Depends(get_db)):
